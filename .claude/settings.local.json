@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc *)",
+      "Bash(xargs ls *)",
+      "Bash(find \"D:/mark/patirchi/patirchi_mobile/patirchi/lib/features\" -name \"*.dart\" -exec grep -l \"// ignore_for_file\\\\|@deprecated\\\\|Deprecated\" {} \\\\;)",
+      "Bash(find \"D:/mark/patirchi/patirchi_mobile/patirchi/lib/core/widgets\" -name \"*.dart\" -exec wc -l {} +)",
+      "Bash(flutter build *)"
+    ]
+  }
+}

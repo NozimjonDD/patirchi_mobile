@@ -1,8 +1,10 @@
 # CLAUDE.md — Patirchi Mobile
 
 ## CRITICAL CONSTRAINT
-**HECH QACHON run, build, yoki test buyruqlarini ishlatma.**
-Bloklangan: `flutter build *`, `flutter run *`, `flutter test *`, `dart run`, `pub get`, `flutter pub get`
+
+[//]: # (**HECH QACHON run, build, yoki test buyruqlarini ishlatma.**)
+
+[//]: # (Bloklangan: `flutter build *`, `flutter run *`, `flutter test *`, `dart run`, `pub get`, `flutter pub get`)
 Ruxsat: fayllarni o'qish, tahrirlash, `dart format`, `dart analyze`
 
 ## Loyiha

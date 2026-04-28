@@ -28,8 +28,7 @@ class SupplierRepository extends BaseRepository {
         ApiEndpoints.myStores,
         queryParams: {'menu': 'supplier'},
       );
-      final results =
-          response['results'] as List? ?? (response is List ? response : []);
+      final List results = (response['results'] as List?) ?? [];
       return results
           .whereType<Map<String, dynamic>>()
           .map(StoreInfo.fromJson)
