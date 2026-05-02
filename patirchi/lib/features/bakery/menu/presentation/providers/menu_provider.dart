@@ -169,7 +169,7 @@ class MenuProvider extends ChangeNotifier {
 
     final result = await _repo.createProduct(_storeId!, data);
     result.fold(
-      onSuccess: (item) => _items = [..._items, item],
+      onSuccess: (item) => _items = <MenuItemModel>[..._items, item],
       onError: (failure) => _error = failure.toUserMessage(),
     );
 
@@ -195,7 +195,7 @@ class MenuProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (updated) {
         _items = _items
-            .map((item) => item.id == updated.id ? updated : item)
+            .map<MenuItemModel>((item) => item.id == updated.id ? updated : item)
             .toList();
       },
       onError: (failure) => _error = failure.toUserMessage(),

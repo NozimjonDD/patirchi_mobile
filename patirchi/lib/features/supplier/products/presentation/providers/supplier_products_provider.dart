@@ -146,7 +146,7 @@ class SupplierProductsProvider extends ChangeNotifier {
 
     final result = await _repo.createProduct(_storeId!, data);
     result.fold(
-      onSuccess: (product) => _products = [..._products, product],
+      onSuccess: (product) => _products = <SupplierProductModel>[..._products, product],
       onError: (failure) => _error = failure.toUserMessage(),
     );
 
@@ -172,7 +172,7 @@ class SupplierProductsProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (updated) {
         _products = _products
-            .map((p) => p.id == updated.id ? updated : p)
+            .map<SupplierProductModel>((p) => p.id == updated.id ? updated : p)
             .toList();
       },
       onError: (failure) => _error = failure.toUserMessage(),
