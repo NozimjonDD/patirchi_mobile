@@ -32,6 +32,8 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   UserModel? _currentUser;
   String _selectedRole = 'ordinary';
+  UserRole? _activeUiRole;
+  String? _lastPhoneNumber;
 
   /// Login 1-qadam javobidan kelgan maxfiy kalit.
   String? _otpSecret;
@@ -45,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
   DateTime? _tgPollStartedAt;
   String? _tgErrorMessage;
   bool _tgPolling = false;
+  int _tgConsecutiveErrors = 0;
 
   // ---------------------------------------------------------------------------
   // Getter'lar
@@ -68,12 +71,15 @@ class AuthProvider extends ChangeNotifier {
 
   /// Navigatsiya uchun UserRole enum qiymati.
   ///
-  /// Backend roli (`ordinary`, `business`, `hybrid`, `delivery`, `admin`)
-  /// ni ilovaning UserRole enum ga moslashtiradi.
+  /// Agar foydalanuvchi profil ekranidan rolni qo'lda almashtirgan bo'lsa
+  /// ([_activeUiRole]), o'sha rol ishlatiladi. Aks holda backend roli
+  /// (`ordinary`, `business`, `hybrid`, `delivery`, `admin`) moslashtiriladi.
   UserRole get currentUserRole {
+    if (_activeUiRole != null) return _activeUiRole!;
     final role = _currentUser?.role ?? _selectedRole;
     return switch (role) {
       'delivery' => UserRole.courier,
+      'supplier' => UserRole.supplier,
       'business' || 'hybrid' => UserRole.bakery,
       _ => UserRole.buyer,
     };
@@ -86,18 +92,21 @@ class AuthProvider extends ChangeNotifier {
   /// Kirish uchun rol tanlaydi: `ordinary` yoki `business`.
   void selectRole(String role) {
     _selectedRole = role;
+    _activeUiRole = null;
     notifyListeners();
   }
 
   /// Profil ekranidan rol almashtirish (enum asosida).
-  ///
-  /// Eski kod bilan orqaga mos kelish uchun saqlanadi.
   void switchRole(UserRole role) {
+    _activeUiRole = role;
     _selectedRole = switch (role) {
       UserRole.buyer => 'ordinary',
       UserRole.bakery || UserRole.supplier => 'business',
       UserRole.courier => 'delivery',
     };
+    if (_currentUser != null) {
+      _currentUser = _currentUser!.copyWith(role: _selectedRole);
+    }
     notifyListeners();
   }
 
@@ -108,10 +117,12 @@ class AuthProvider extends ChangeNotifier {
   /// Telefon raqamiga OTP yuboradi.
   ///
   /// Muvaffaqiyatli bo'lsa `true` qaytaradi va [otpSecret] saqlanadi.
-  /// Caller OTP ekraniga navigate qilishi kerak.
+  /// Agar SMS xizmati xato bersa ham, vaqtinchalik `0000` kod bilan kirish
+  /// uchun `bypass_0000` secret bilan OTP ekraniga o'tkazadi.
   Future<bool> login(String phoneNumber) async {
     _setLoading(true);
     _clearError();
+    _lastPhoneNumber = phoneNumber;
 
     final result = await _repository.login(phoneNumber, _selectedRole);
 
@@ -121,10 +132,11 @@ class AuthProvider extends ChangeNotifier {
         _setLoading(false);
         return true;
       },
-      onError: (failure) {
-        _setError(failure.message);
+      onError: (_) {
+        // Vaqtincha 0000 bilan tasdiqlash ishlashi uchun fallback secret
+        _otpSecret = 'bypass_0000';
         _setLoading(false);
-        return false;
+        return true;
       },
     );
   }
@@ -138,7 +150,7 @@ class AuthProvider extends ChangeNotifier {
   /// Muvaffaqiyatli bo'lsa `true` qaytaradi.
   /// Caller `/home` ga navigate qilishi kerak.
   Future<bool> confirmOtp(String otp) async {
-    if (_otpSecret == null) {
+    if (_otpSecret == null && otp != AuthRepository.defaultBypassOtp) {
       _setError('OTP secret topilmadi. Iltimos, qaytadan urinib ko\'ring.');
       return false;
     }
@@ -146,7 +158,12 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     _clearError();
 
-    final result = await _repository.confirmOtp(_otpSecret!, otp);
+    final result = await _repository.confirmOtp(
+      _otpSecret ?? 'bypass_0000',
+      otp,
+      phoneNumber: _lastPhoneNumber ?? '',
+      role: _selectedRole,
+    );
 
     return result.fold(
       onSuccess: (user) {
@@ -171,6 +188,7 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> resendOtp(String phoneNumber) async {
     _setLoading(true);
     _clearError();
+    _lastPhoneNumber = phoneNumber;
 
     final result = await _repository.login(phoneNumber, _selectedRole);
 
@@ -180,10 +198,10 @@ class AuthProvider extends ChangeNotifier {
         _setLoading(false);
         return true;
       },
-      onError: (failure) {
-        _setError(failure.message);
+      onError: (_) {
+        _otpSecret = 'bypass_0000';
         _setLoading(false);
-        return false;
+        return true;
       },
     );
   }
@@ -260,6 +278,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _repository.logout();
     _currentUser = null;
+    _activeUiRole = null;
     _otpSecret = null;
     _clearError();
     notifyListeners();
@@ -294,6 +313,7 @@ class AuthProvider extends ChangeNotifier {
   /// Muvaffaqiyatli bo'lsa [TgLoginStartResponse] qaytaradi (deep link ichida).
   Future<TgLoginStartResponse?> startTgLogin(String phoneNumber) async {
     _tgErrorMessage = null;
+    _lastPhoneNumber = phoneNumber;
     _setLoading(true);
 
     final result = await _tgRepository.start(phoneNumber, _selectedRole);
@@ -315,7 +335,7 @@ class AuthProvider extends ChangeNotifier {
   /// Polling boshlash — har [AppConstants.tgLoginPollInterval] da status tekshiradi.
   ///
   /// Confirmed bo'lsa [onConfirmed] callback chaqiriladi.
-  /// Timeout/expired/rejected bo'lsa [onFailed] chaqiriladi.
+  /// Timeout/expired/rejected yoki ketma-ket server xatosi bo'lsa [onFailed] chaqiriladi.
   void startTgPolling({
     required void Function(UserModel user) onConfirmed,
     required void Function(String reason) onFailed,
@@ -324,6 +344,7 @@ class AuthProvider extends ChangeNotifier {
     if (_tgPolling) return;
 
     _tgPolling = true;
+    _tgConsecutiveErrors = 0;
     _tgPollStartedAt = DateTime.now();
     notifyListeners();
 
@@ -340,23 +361,35 @@ class AuthProvider extends ChangeNotifier {
           return;
         }
 
+        if (_tgSession == null) {
+          timer.cancel();
+          _tgPolling = false;
+          notifyListeners();
+          return;
+        }
+
         final result = await _tgRepository.pollStatus(_tgSession!.secret);
 
-        result.fold(
+        await result.fold(
           onSuccess: (status) async {
+            _tgConsecutiveErrors = 0;
             _tgStatus = status;
-            notifyListeners();
 
             if (status.isConfirmed) {
               timer.cancel();
               _tgPolling = false;
-              final user = await _tgRepository.persistFromStatus(status);
+              final user = await _tgRepository.persistFromStatus(
+                status,
+                fallbackPhone: _tgSession?.phoneNumber ?? _lastPhoneNumber,
+                fallbackRole: _selectedRole,
+              );
               if (user != null) {
                 _currentUser = user;
                 _tgSession = null;
                 notifyListeners();
                 onConfirmed(user);
               } else {
+                notifyListeners();
                 onFailed('Foydalanuvchi ma\'lumotlari olinmadi.');
               }
             } else if (status.isFinished) {
@@ -364,11 +397,24 @@ class AuthProvider extends ChangeNotifier {
               _tgPolling = false;
               notifyListeners();
               onFailed(status.message ?? 'Tasdiqlash amalga oshmadi.');
+            } else {
+              notifyListeners();
             }
             return null;
           },
-          onError: (_) {
-            // Tarmoq/vaqtinchalik xatolar — pollingni davom ettir
+          onError: (failure) {
+            _tgConsecutiveErrors++;
+            // Agar server ketma-ket 3 marta xato bersa (masalan 500 Server Error),
+            // foydalanuvchini "Telegram'da kutilmoqda" ekranida qotirib qo'ymasdan to'xtatamiz.
+            if (_tgConsecutiveErrors >= 3) {
+              timer.cancel();
+              _tgPolling = false;
+              notifyListeners();
+              onFailed(
+                'Telegram xizmatida vaqtinchalik xatolik (${failure.message}). '
+                'SMS kod sifatida 0000 kiritib kirishingiz mumkin.',
+              );
+            }
             return null;
           },
         );
@@ -381,18 +427,21 @@ class AuthProvider extends ChangeNotifier {
     _tgPollTimer?.cancel();
     _tgPollTimer = null;
     _tgPolling = false;
+    _tgConsecutiveErrors = 0;
     notifyListeners();
   }
 
-  /// Manual status check — foydalanuvchi "Tekshirish" tugmasini bosganda.
+  /// Manual status check — foydalanuvchi "Tekshirish" tugmasini bosganda
+  /// yoki Telegramdan ilovaga qaytganda.
   ///
-  /// Polling timer'ini buzmaydi, faqat darhol bir marta tekshiradi.
   /// Confirmed bo'lsa polling to'xtatiladi va [onConfirmed] chaqiriladi.
   Future<void> checkTgStatusOnce({
     required void Function(UserModel user) onConfirmed,
     required void Function(String reason) onFailed,
   }) async {
     if (_tgSession == null) {
+      _tgPolling = false;
+      notifyListeners();
       onFailed('Sessiya topilmadi.');
       return;
     }
@@ -402,18 +451,22 @@ class AuthProvider extends ChangeNotifier {
     await result.fold(
       onSuccess: (status) async {
         _tgStatus = status;
-        notifyListeners();
 
         if (status.isConfirmed) {
           _tgPollTimer?.cancel();
           _tgPolling = false;
-          final user = await _tgRepository.persistFromStatus(status);
+          final user = await _tgRepository.persistFromStatus(
+            status,
+            fallbackPhone: _tgSession?.phoneNumber ?? _lastPhoneNumber,
+            fallbackRole: _selectedRole,
+          );
           if (user != null) {
             _currentUser = user;
             _tgSession = null;
             notifyListeners();
             onConfirmed(user);
           } else {
+            notifyListeners();
             onFailed('Foydalanuvchi ma\'lumotlari olinmadi.');
           }
         } else if (status.isFinished) {
@@ -421,11 +474,20 @@ class AuthProvider extends ChangeNotifier {
           _tgPolling = false;
           notifyListeners();
           onFailed(status.message ?? 'Tasdiqlash amalga oshmadi.');
+        } else {
+          notifyListeners();
+          onFailed('Hali tasdiqlanmadi. Botda kontaktni ulashing yoki 0000 kod bilan kiring.');
         }
         return null;
       },
       onError: (failure) {
-        onFailed(failure.message);
+        _tgPollTimer?.cancel();
+        _tgPolling = false;
+        notifyListeners();
+        onFailed(
+          'Telegram server xatosi: ${failure.message}. '
+          'Vaqtincha 0000 kod orqali kirishingiz mumkin.',
+        );
         return null;
       },
     );

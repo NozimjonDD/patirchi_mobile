@@ -357,7 +357,9 @@ class ApiClient {
 
   /// Access tokenni storage dan oladi.
   Future<String?> _getToken() async {
-    return SecureStorageService.instance.getToken();
+    final token = await SecureStorageService.instance.getToken();
+    if (token == 'bypass_token_0000') return null;
+    return token;
   }
 
   /// Refresh token orqali access tokenni yangilashga urinadi.

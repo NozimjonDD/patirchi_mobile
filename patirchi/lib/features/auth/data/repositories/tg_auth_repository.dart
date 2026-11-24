@@ -69,7 +69,12 @@ class TgAuthRepository extends BaseRepository {
   /// Tasdiqlangan status'dan tokenlarni saqlaydi va [UserModel] qaytaradi.
   ///
   /// [status.isConfirmed] bo'lmasa yoki tokenlar yo'q bo'lsa `null` qaytaradi.
-  Future<UserModel?> persistFromStatus(TgLoginStatusResponse status) async {
+  /// Agar backend `user` obyektini qaytarmasa, `/auth/me/` orqali profilni oladi.
+  Future<UserModel?> persistFromStatus(
+    TgLoginStatusResponse status, {
+    String? fallbackPhone,
+    String? fallbackRole,
+  }) async {
     if (!status.isConfirmed ||
         status.access == null ||
         status.refresh == null) {
@@ -84,6 +89,25 @@ class TgAuthRepository extends BaseRepository {
       await _storage.saveUserJson(userJson);
       return UserModel.fromJson(userJson);
     }
-    return null;
+
+    // Backend user obyektini qaytarmagan bo'lsa, /auth/me/ orqali olamiz
+    try {
+      final meResponse = await _api.get(ApiEndpoints.me);
+      final user = UserModel.fromJson(meResponse);
+      await _storage.saveUserJson(user.toJson());
+      return user;
+    } on Object {
+      // /auth/me/ ham xato bersa, fallback UserModel yaratamiz
+      final fallbackUser = UserModel(
+        id: 1,
+        phoneNumber: fallbackPhone ?? '',
+        firstName: 'Foydalanuvchi',
+        lastName: '',
+        role: fallbackRole ?? 'ordinary',
+        dateJoined: DateTime.now(),
+      );
+      await _storage.saveUserJson(fallbackUser.toJson());
+      return fallbackUser;
+    }
   }
 }

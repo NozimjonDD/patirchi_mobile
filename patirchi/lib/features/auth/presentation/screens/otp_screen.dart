@@ -23,13 +23,14 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> {
+class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
   static const int _otpLength = 4;
   static const int _timerSeconds = 60;
 
+  // Vaqtinchalik default '0000' bilan to'ldirilgan
   final List<TextEditingController> _controllers = List.generate(
     _otpLength,
-    (_) => TextEditingController(),
+    (_) => TextEditingController(text: '0'),
   );
   final List<FocusNode> _focusNodes = List.generate(
     _otpLength,
@@ -52,15 +53,21 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startTimer();
-    // Birinchi maydonni fokusga olish
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNodes.first.requestFocus();
-    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Foydalanuvchi Telegram ilovasidan qaytib kelganda darhol statusni tekshiramiz
+    if (state == AppLifecycleState.resumed && _authRef.isTgPolling) {
+      _onCheckNow();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authRef.stopTgPolling();
     _timer?.cancel();
     for (final c in _controllers) {
@@ -329,7 +336,7 @@ class _OtpScreenState extends State<OtpScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Kod $_formattedPhone ga yuborildi',
+          'Kod $_formattedPhone ga yuborildi (vaqtincha kod: 0000)',
           style: const TextStyle(
             fontSize: 14,
             color: AppColors.textSecondary,
