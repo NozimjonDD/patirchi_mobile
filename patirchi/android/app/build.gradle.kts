@@ -28,7 +28,7 @@ val hasReleaseSigning = keystoreProperties.containsKey("storeFile") &&
 android {
     namespace = "com.patirchi.patirchi"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         // Java 21 — Yandex MapKit 4.22.0+ talab qiladi (class file version 65)
