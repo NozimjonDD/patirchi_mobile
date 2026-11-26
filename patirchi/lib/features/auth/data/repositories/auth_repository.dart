@@ -27,11 +27,6 @@ class AuthRepository extends BaseRepository {
   final ApiClient _api;
   final SecureStorageService _storage;
 
-  /// Vaqtinchalik default SMS OTP kodi (`0000`) va uning lokal tokeni.
-  static const String defaultBypassOtp = '0000';
-  static const String bypassToken = 'bypass_token_0000';
-  static const String bypassRefreshToken = 'bypass_refresh_0000';
-
   // ---------------------------------------------------------------------------
   // OTP yuborish (1-qadam)
   // ---------------------------------------------------------------------------
@@ -64,49 +59,13 @@ class AuthRepository extends BaseRepository {
   ///
   /// [secret] — login javobidan kelgan maxfiy kalit.
   /// [otp] — foydalanuvchi kiritgan 4 raqamli kod.
-  /// Vaqtincha `0000` kiritilsa, backend rad etsa ham lokal sessiya ochiladi.
   ///
   /// Muvaffaqiyatli bo'lsa [UserModel] qaytaradi va tokenlarni saqlaydi.
   Future<Result<UserModel>> confirmOtp(
     String secret,
-    String otp, {
-    String phoneNumber = '',
-    String role = 'ordinary',
-  }) async {
+    String otp,
+  ) async {
     return safeApiCall(() async {
-      if (otp == defaultBypassOtp) {
-        // Agar haqiqiy secret bo'lsa, avval backenddan urinib ko'ramiz;
-        // xato bersa (masalan Invalid OTP), lokal 0000 bypass bilan kiramiz.
-        if (secret.isNotEmpty && secret != 'bypass_0000') {
-          try {
-            final request = LoginConfirmRequest(secret: secret, otp: otp);
-            final response = await _api.post(
-              ApiEndpoints.loginConfirm,
-              body: request.toJson(),
-            );
-            final confirmed = LoginConfirmResponse.fromJson(response);
-            await _storage.saveToken(confirmed.access);
-            await _storage.saveRefreshToken(confirmed.refresh);
-            return await _fetchAndCacheMe();
-          } on Object {
-            // Backend 0000 ni qabul qilmasa — vaqtinchalik lokal tasdiqlash
-          }
-        }
-
-        await _storage.saveToken(bypassToken);
-        await _storage.saveRefreshToken(bypassRefreshToken);
-        final bypassUser = UserModel(
-          id: 1,
-          phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : '+998901234567',
-          firstName: 'Patirchi',
-          lastName: 'Foydalanuvchi',
-          role: role,
-          dateJoined: DateTime.now(),
-        );
-        await _storage.saveUserJson(bypassUser.toJson());
-        return bypassUser;
-      }
-
       final request = LoginConfirmRequest(secret: secret, otp: otp);
       final response = await _api.post(
         ApiEndpoints.loginConfirm,
@@ -157,11 +116,6 @@ class AuthRepository extends BaseRepository {
   /// Tokenlar orqali joriy foydalanuvchi profilini oladi.
   Future<Result<UserModel>> getMe() async {
     return safeApiCall(() async {
-      final token = await _storage.getToken();
-      if (token == bypassToken) {
-        final stored = await getStoredUser();
-        if (stored != null) return stored;
-      }
       return _fetchAndCacheMe();
     });
   }

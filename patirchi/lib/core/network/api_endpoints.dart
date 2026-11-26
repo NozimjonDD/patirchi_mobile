@@ -88,11 +88,24 @@ class ApiEndpoints {
   /// POST — savatchaga mahsulot qo'shish.
   static const String cartAdd = '/site/cart/add/';
 
+  /// POST — guest savatini autentifikatsiya qilingan savatga birlashtirish.
+  static const String guestCartMerge = '/site/cart/merge-guest/';
+
+  /// GET/POST — sevimli mahsulotlarni olish va birlashtirish.
+  static const String wishlist = '/site/wishlist/';
+  static const String wishlistSync = '/site/wishlist/sync/';
+
+  /// DELETE — sevimlilar ro'yxatidan mahsulotni o'chirish.
+  static String wishlistItem(int productId) => '/site/wishlist/items/$productId/';
+
   /// PUT — savatchadagi elementni yangilash.
   static String cartUpdate(int itemId) => '/site/cart/update/$itemId/';
 
   /// DELETE — savatchadan o'chirish.
   static String cartRemove(int pk) => '/site/cart/remove/$pk/';
+
+  /// POST — qurilmani ro'yxatga olish.
+  static const String deviceRegister = '/devices/register/';
 
   // ---------------------------------------------------------------------------
   // Site — Buyurtmalar

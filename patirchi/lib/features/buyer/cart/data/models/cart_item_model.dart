@@ -58,4 +58,22 @@ class CartItemModel {
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
     );
   }
+
+  factory CartItemModel.fromCacheJson(Map<String, dynamic> json) {
+    final rawProduct = json['product'];
+    return CartItemModel(
+      id: 0,
+      product: rawProduct is Map<String, dynamic>
+          ? ProductModel.fromCacheJson(rawProduct)
+          : null,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+    );
+  }
+
+  Map<String, dynamic> toCacheJson() => {
+        'id': 0,
+        'product_id': product?.id,
+        'product': product?.toCacheJson(),
+        'quantity': quantity,
+      };
 }

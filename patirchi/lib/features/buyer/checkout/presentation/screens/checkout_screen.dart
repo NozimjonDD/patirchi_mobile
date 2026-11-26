@@ -63,8 +63,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   children: [
                     _DeliverySection(cart: cart, checkout: checkout),
                     const SizedBox(height: 12),
-                    _AddressSection(checkout: checkout),
-                    const SizedBox(height: 12),
+                    if (cart.deliveryMethod == DeliveryMethod.courier) ...[
+                      _AddressSection(checkout: checkout),
+                      const SizedBox(height: 12),
+                    ],
                     _OrderItemsSection(cart: cart),
                     const SizedBox(height: 12),
                     _CouponSection(cart: cart),
@@ -387,15 +389,16 @@ class _CouponSectionState extends State<_CouponSection> {
     final hasDiscount = widget.cart.couponCode != null;
 
     return _SectionCard(
-      title: 'Kupon kodi',
+      title: 'Kupon kodi — tez kunda',
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: _ctrl,
+              enabled: false,
               textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                hintText: 'Masalan: PATIR20',
+                hintText: 'Hozircha mavjud emas',
                 hintStyle: const TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 14,
@@ -423,17 +426,15 @@ class _CouponSectionState extends State<_CouponSection> {
           ),
           const SizedBox(width: 10),
           GestureDetector(
-            onTap: () {
-              widget.cart.applyCoupon(_ctrl.text.trim());
-            },
+            onTap: null,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: AppColors.border,
                 borderRadius: BorderRadius.circular(AppConstants.radiusM),
               ),
               child: const Text(
-                'Qo\'llash',
+                'Tez kunda',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
@@ -517,8 +518,9 @@ class _PaymentMethodSection extends StatelessWidget {
       child: Column(
         children: PaymentMethod.values.map((method) {
           final isSelected = checkout.selectedPaymentMethod == method;
+          final isAvailable = method == PaymentMethod.cash;
           return GestureDetector(
-            onTap: () => checkout.setPaymentMethod(method),
+            onTap: isAvailable ? () => checkout.setPaymentMethod(method) : null,
             child: AnimatedContainer(
               duration: AppConstants.animFast,
               margin: const EdgeInsets.only(bottom: 8),
@@ -533,7 +535,9 @@ class _PaymentMethodSection extends StatelessWidget {
                   width: 1.5,
                 ),
               ),
-              child: Row(
+              child: Opacity(
+                opacity: isAvailable ? 1 : 0.55,
+                child: Row(
                 children: [
                   _PaymentIcon(method: method),
                   const SizedBox(width: 12),
@@ -549,7 +553,16 @@ class _PaymentMethodSection extends StatelessWidget {
                       ),
                     ),
                   ),
-                  AnimatedContainer(
+                  if (!isAvailable)
+                    const Text(
+                      'Tez kunda',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  else AnimatedContainer(
                     duration: AppConstants.animFast,
                     width: 20,
                     height: 20,
@@ -574,6 +587,7 @@ class _PaymentMethodSection extends StatelessWidget {
                         : null,
                   ),
                 ],
+              ),
               ),
             ),
           );
@@ -642,20 +656,27 @@ class _BottomBar extends StatelessWidget {
               ? null
               : () async {
                   final ordersProvider = context.read<OrdersProvider>();
-                  final order = await checkout.placeOrder(cart);
-                  if (order != null) {
-                    ordersProvider.addOrder(order);
+                  final orders = await checkout.placeOrder(cart);
+                  if (orders != null && orders.isNotEmpty) {
+                    for (final order in orders) {
+                      ordersProvider.addOrder(order);
+                    }
                     if (context.mounted) {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
                           builder: (_) => CheckoutSuccessScreen(
-                            orderNumber: order.orderNumber,
-                            orderId: order.id,
+                            orderNumber: orders.first.orderNumber,
+                            orderId: orders.first.id,
+                            additionalOrders: orders.length - 1,
                           ),
                         ),
                       );
                     }
+                  } else if (context.mounted && checkout.error != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(checkout.error!)),
+                    );
                   }
                 },
           style: ElevatedButton.styleFrom(

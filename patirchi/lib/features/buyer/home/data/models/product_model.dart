@@ -76,11 +76,12 @@ class ProductModel {
   final List<ProductImage> images; // from detail endpoint
   final ProductCategory? category;
   final StoreInfo? store;
+  final int? storeId;
   bool isFavorite; // local-only state
 
   // Legacy compatibility fields (derived from backend data or kept for UI)
   String get shopName => store?.name ?? '';
-  String get shopId => store?.id.toString() ?? '';
+  String get shopId => (store?.id ?? storeId)?.toString() ?? '';
   String? get imageUrl => firstImage ?? (images.isNotEmpty ? images.first.image : null);
 
   // Legacy weight display (default to grams unit)
@@ -113,6 +114,7 @@ class ProductModel {
     this.images = const [],
     this.category,
     this.store,
+    this.storeId,
     this.isFavorite = false,
   });
 
@@ -136,6 +138,7 @@ class ProductModel {
       store: json['store'] != null
           ? StoreInfo.fromJson(json['store'] as Map<String, dynamic>)
           : null,
+      storeId: (json['store_id'] as num?)?.toInt(),
     );
   }
 
@@ -148,6 +151,52 @@ class ProductModel {
       weight: (json['weight'] as num?)?.toInt(),
       isAvailable: json['is_available'] as bool? ?? true,
       firstImage: json['first_image'] as String?,
+      storeId: (json['store_id'] as num?)?.toInt(),
+    );
+  }
+
+  /// Guest savati va sevimlilari uchun xavfsiz lokal nusxa.
+  Map<String, dynamic> toCacheJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'price': price,
+        'weight': weight,
+        'ingredients': ingredients,
+        'is_available': isAvailable,
+        'first_image': imageUrl,
+        'store_id': store?.id ?? storeId,
+        'category': category == null
+            ? null
+            : {'id': category!.id, 'name': category!.name, 'icon': category!.icon},
+        'store': store == null
+            ? null
+            : {
+                'id': store!.id,
+                'name': store!.name,
+                'logo': store!.logo,
+                'address': store!.address,
+                'phone_number': store!.phoneNumber,
+              },
+      };
+
+  factory ProductModel.fromCacheJson(Map<String, dynamic> json) {
+    return ProductModel(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      price: parsePrice(json['price']),
+      weight: (json['weight'] as num?)?.toInt(),
+      ingredients: json['ingredients'] as String?,
+      isAvailable: json['is_available'] as bool? ?? true,
+      firstImage: json['first_image'] as String?,
+      category: json['category'] is Map<String, dynamic>
+          ? ProductCategory.fromJson(json['category'] as Map<String, dynamic>)
+          : null,
+      store: json['store'] is Map<String, dynamic>
+          ? StoreInfo.fromJson(json['store'] as Map<String, dynamic>)
+          : null,
+      storeId: (json['store_id'] as num?)?.toInt(),
     );
   }
 
@@ -175,6 +224,7 @@ class ProductModel {
     List<ProductImage>? images,
     ProductCategory? category,
     StoreInfo? store,
+    int? storeId,
     bool? isFavorite,
   }) {
     return ProductModel(
@@ -189,6 +239,7 @@ class ProductModel {
       images: images ?? this.images,
       category: category ?? this.category,
       store: store ?? this.store,
+      storeId: storeId ?? this.storeId,
       isFavorite: isFavorite ?? this.isFavorite,
     );
   }

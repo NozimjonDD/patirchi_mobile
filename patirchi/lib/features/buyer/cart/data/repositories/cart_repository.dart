@@ -77,13 +77,25 @@ class CartRepository extends BaseRepository {
   // Buyurtma berish
   // ---------------------------------------------------------------------------
 
-  /// Aktiv savatchadan buyurtma yaratadi.
-  ///
-  /// Backend aktiv savatchani o'zi o'qiydi — body shart emas.
-  Future<Result<OrderModel>> checkout() async {
+  /// Backend savatni do'konlar bo'yicha bir nechta buyurtmaga ajratishi mumkin.
+  Future<Result<List<OrderModel>>> createOrders({
+    required String fulfillmentType,
+    String? deliveryAddress,
+  }) async {
     return safeApiCall(() async {
-      final response = await _api.post(ApiEndpoints.orderCreate);
-      return OrderModel.fromJson(response);
+      final response = await _api.post(
+        ApiEndpoints.orderCreate,
+        body: {
+          'fulfillment_type': fulfillmentType,
+          if (deliveryAddress != null && deliveryAddress.isNotEmpty)
+            'delivery_address': deliveryAddress,
+        },
+      );
+      final rawOrders = response['orders'] as List<dynamic>? ?? [];
+      return rawOrders
+          .whereType<Map<String, dynamic>>()
+          .map(OrderModel.fromJson)
+          .toList();
     });
   }
 }

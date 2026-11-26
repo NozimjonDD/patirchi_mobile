@@ -9,7 +9,9 @@ import '../providers/auth_provider.dart';
 /// Foydalanuvchi telefon raqamini kiritadi → "Kirish" bosadi →
 /// backend OTP yuboradi → OTP ekraniga o'tish.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.returnRoute});
+
+  final String? returnRoute;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -47,7 +49,10 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.pushNamed(
         context,
         '/otp',
-        arguments: fullPhone,
+        arguments: {
+          'phone': fullPhone,
+          'returnRoute': widget.returnRoute,
+        },
       );
     } else {
       _showSnackBar(auth.errorMessage ?? 'Xato yuz berdi');
@@ -164,30 +169,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           : const Text('Kirish'),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Akkauntingiz yo\'qmi? ',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/register'),
-                      child: const Text(
-                        'Ro\'yxatdan o\'tish',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),

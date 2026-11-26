@@ -159,7 +159,7 @@ class CartScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Kupon kodi',
+                          'Kupon kodi — tez kunda',
                           style: TextStyle(
                               fontWeight: FontWeight.w600, fontSize: 15),
                         ),
@@ -168,27 +168,17 @@ class CartScreen extends StatelessWidget {
                           children: [
                             Expanded(
                               child: TextField(
-                                onChanged: cart.applyCoupon,
+                                enabled: false,
                                 decoration: const InputDecoration(
-                                  hintText: 'BEDR2658',
+                                  hintText: 'Hozircha mavjud emas',
                                   isDense: true,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             ElevatedButton(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      cart.couponCode != null
-                                          ? "Kupon qo'llanildi"
-                                          : "Kupon kodi noto'g'ri",
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: const Text('Qo\'llash'),
+                              onPressed: null,
+                              child: const Text('Tez kunda'),
                             ),
                           ],
                         ),

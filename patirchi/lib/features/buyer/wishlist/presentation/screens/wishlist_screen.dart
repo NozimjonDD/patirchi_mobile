@@ -12,7 +12,7 @@ class WishlistScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<BuyerHomeProvider>(
       builder: (context, provider, _) {
-        final favorites = provider.products.where((p) => p.isFavorite).toList();
+        final favorites = provider.favoriteProducts;
 
         if (favorites.isEmpty) {
           return const EmptyState(

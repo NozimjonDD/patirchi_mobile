@@ -24,6 +24,52 @@ class ProfileScreen extends StatelessWidget {
     return Consumer<AuthProvider>(
       builder: (context, auth, _) {
         final user = auth.currentUser;
+        if (user == null) {
+          return Scaffold(
+            backgroundColor: bgColor,
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.person_outline_rounded,
+                        size: 76,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Mehmon rejimi',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Mahsulotlarni ko\'rish, savat va sevimlilarni saqlash mumkin. Buyurtma berish uchun telefon orqali kiring.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: secondaryText, height: 1.5),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pushNamed(context, '/login'),
+                          child: const Text('Telefon bilan kirish'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
         return Scaffold(
           backgroundColor: bgColor,
           body: SafeArea(

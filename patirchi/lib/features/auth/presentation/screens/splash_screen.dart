@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:patirchi/core/theme/app_colors.dart';
@@ -9,7 +11,7 @@ import '../providers/auth_provider.dart';
 /// 1. Saqlangan tokenlar mavjudmi tekshiradi
 /// 2. Mavjud bo'lsa — `GET /auth/me/` orqali sessiyani tiklaydi
 /// 3. Muvaffaqiyatli → `/home`
-/// 4. Muvaffaqiyatsiz → `/role-selection`
+/// 4. Muvaffaqiyatsiz → mehmon sifatida `/home`
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -36,24 +38,18 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _initializeApp() async {
-    // Minimal splash ko'rsatish vaqti
-    await Future.wait([
-      Future.delayed(const Duration(milliseconds: 1800)),
-      _checkAuthState(),
-    ]);
+    // Mehmon sahifasini token tekshiruvi yoki tarmoq javobini kutdirmay ochamiz.
+    unawaited(_restoreSession());
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/home');
   }
 
-  Future<void> _checkAuthState() async {
-    if (!mounted) return;
-    final auth = context.read<AuthProvider>();
-    final isLoggedIn = await auth.tryAutoLogin();
-
-    if (!mounted) return;
-
-    if (isLoggedIn) {
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      Navigator.pushReplacementNamed(context, '/role-selection');
+  Future<void> _restoreSession() async {
+    try {
+      await context.read<AuthProvider>().tryAutoLogin();
+    } on Object {
+      // Sessiya tiklanmasa ham mehmon rejimida ilova ochiladi.
     }
   }
 

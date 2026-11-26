@@ -1,16 +1,31 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:patirchi/core/constants/enums.dart';
 import 'package:patirchi/core/error/result.dart';
+import 'package:patirchi/core/storage/guest_buyer_storage.dart';
+import 'package:patirchi/features/auth/presentation/providers/auth_provider.dart';
 import 'package:patirchi/features/buyer/cart/data/models/cart_item_model.dart';
 import 'package:patirchi/features/buyer/cart/data/repositories/cart_repository.dart';
 import 'package:patirchi/features/buyer/home/data/models/product_model.dart';
-import 'package:patirchi/features/buyer/orders/data/models/order_model.dart';
 
 class CartProvider extends ChangeNotifier {
-  CartProvider({CartRepository? repository})
-      : _repository = repository ?? CartRepository();
+  CartProvider({CartRepository? repository, AuthProvider? authProvider})
+      : _repository = repository ?? CartRepository(),
+        _authProvider = authProvider {
+    _lastLocalMode = _usesLocalCart;
+    _authProvider?.addListener(_onAuthChanged);
+    _initialLoad = loadCart();
+    unawaited(_initialLoad);
+  }
 
   final CartRepository _repository;
+  final AuthProvider? _authProvider;
+  final GuestBuyerStorage _guestStorage = GuestBuyerStorage();
+  late final Future<void> _initialLoad;
+  late bool _lastLocalMode;
+
+  bool get _usesLocalCart => _authProvider?.isUsingLocalBuyerData ?? false;
 
   // ---------------------------------------------------------------------------
   // State
@@ -18,7 +33,6 @@ class CartProvider extends ChangeNotifier {
 
   List<CartItemModel> _items = [];
   DeliveryMethod _deliveryMethod = DeliveryMethod.pickup;
-  String? _couponCode;
   bool _isLoading = false;
   String? _error;
 
@@ -28,7 +42,7 @@ class CartProvider extends ChangeNotifier {
 
   List<CartItemModel> get items => _items;
   DeliveryMethod get deliveryMethod => _deliveryMethod;
-  String? get couponCode => _couponCode;
+  String? get couponCode => null;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -36,10 +50,17 @@ class CartProvider extends ChangeNotifier {
 
   int get subtotal => _items.fold(0, (sum, item) => sum + item.totalPrice);
 
-  int get deliveryFee =>
-      _deliveryMethod == DeliveryMethod.courier ? 15000 : 0;
+  int get deliveryFee {
+    if (_deliveryMethod != DeliveryMethod.courier || _items.isEmpty) return 0;
+    final storeIds = _items
+        .map((item) => item.product?.storeId ?? item.product?.store?.id)
+        .whereType<int>()
+        .toSet();
+    final storeCount = storeIds.isEmpty ? 1 : storeIds.length;
+    return 15000 * storeCount;
+  }
 
-  int get discount => _couponCode != null ? (subtotal * 0.1).round() : 0;
+  int get discount => 0;
 
   int get total => subtotal - discount + deliveryFee;
 
@@ -49,6 +70,16 @@ class CartProvider extends ChangeNotifier {
 
   Future<void> loadCart() async {
     _setLoading(true);
+    if (_usesLocalCart) {
+      final cached = await _guestStorage.readCart();
+      _items = cached
+          .map(CartItemModel.fromCacheJson)
+          .where((item) => item.product != null)
+          .toList();
+      _error = null;
+      _setLoading(false);
+      return;
+    }
     final result = await _repository.getCart();
     result.fold(
       onSuccess: (cartModel) {
@@ -62,12 +93,29 @@ class CartProvider extends ChangeNotifier {
     _setLoading(false);
   }
 
+  void _onAuthChanged() {
+    final localMode = _usesLocalCart;
+    if (localMode == _lastLocalMode) return;
+    _lastLocalMode = localMode;
+    unawaited(loadCart());
+  }
+
+  Future<void> _persistLocalCart() async {
+    await _guestStorage.writeCart(
+      _items
+          .where((item) => item.product != null)
+          .map((item) => item.toCacheJson())
+          .toList(),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Add item
   // ---------------------------------------------------------------------------
 
   /// Mahsulotni savatchaga qo'shadi va savatchani yangilaydi.
   Future<void> addItem(ProductModel product, {int quantity = 1}) async {
+    await _initialLoad;
     _setLoading(true);
 
     // Optimistic local update
@@ -79,6 +127,12 @@ class CartProvider extends ChangeNotifier {
       // Temporary local item (id=0 until server responds)
       _items.add(CartItemModel(id: 0, product: product, quantity: quantity));
       notifyListeners();
+    }
+
+    if (_usesLocalCart) {
+      await _persistLocalCart();
+      _setLoading(false);
+      return;
     }
 
     final result = await _repository.addToCart(product.id, quantity);
@@ -113,6 +167,7 @@ class CartProvider extends ChangeNotifier {
   /// [productId] — ProductModel.id (int). Savatcha elementining id'si
   /// topiladi va serverga yuboriladi.
   Future<void> removeItem(int productId) async {
+    await _initialLoad;
     final idx = _items.indexWhere((i) => i.product?.id == productId);
     if (idx == -1) return;
 
@@ -120,6 +175,10 @@ class CartProvider extends ChangeNotifier {
     final removed = _items.removeAt(idx);
     notifyListeners();
 
+    if (_usesLocalCart) {
+      await _persistLocalCart();
+      return;
+    }
     if (cartItemId == 0) return; // local-only item
 
     final result = await _repository.removeFromCart(cartItemId);
@@ -143,6 +202,7 @@ class CartProvider extends ChangeNotifier {
   /// [productId] — ProductModel.id (int).
   /// [qty] <= 0 bo'lsa element o'chiriladi.
   Future<void> updateQuantity(int productId, int qty) async {
+    await _initialLoad;
     final idx = _items.indexWhere((i) => i.product?.id == productId);
     if (idx == -1) return;
 
@@ -156,6 +216,10 @@ class CartProvider extends ChangeNotifier {
     _items[idx].quantity = qty;
     notifyListeners();
 
+    if (_usesLocalCart) {
+      await _persistLocalCart();
+      return;
+    }
     if (cartItemId == 0) return; // local-only item
 
     final result = await _repository.updateQuantity(cartItemId, qty);
@@ -171,32 +235,6 @@ class CartProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Checkout
-  // ---------------------------------------------------------------------------
-
-  /// Aktiv savatchadan buyurtma yaratadi.
-  Future<OrderModel?> checkout() async {
-    _setLoading(true);
-    OrderModel? order;
-
-    final result = await _repository.checkout();
-    result.fold(
-      onSuccess: (newOrder) {
-        order = newOrder;
-        _items.clear();
-        _couponCode = null;
-        _error = null;
-      },
-      onError: (failure) {
-        _error = failure.message;
-      },
-    );
-
-    _setLoading(false);
-    return order;
-  }
-
-  // ---------------------------------------------------------------------------
   // Local-only helpers
   // ---------------------------------------------------------------------------
 
@@ -206,13 +244,12 @@ class CartProvider extends ChangeNotifier {
   }
 
   void applyCoupon(String code) {
-    _couponCode = code.isNotEmpty ? code : null;
-    notifyListeners();
+    // Coupon support is not available in the order API yet.
   }
 
   void clear() {
     _items.clear();
-    _couponCode = null;
+    if (_usesLocalCart) unawaited(_guestStorage.clearCart());
     notifyListeners();
   }
 
@@ -234,5 +271,11 @@ class CartProvider extends ChangeNotifier {
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authProvider?.removeListener(_onAuthChanged);
+    super.dispose();
   }
 }

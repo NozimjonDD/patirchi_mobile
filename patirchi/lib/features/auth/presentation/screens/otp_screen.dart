@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:patirchi/core/theme/app_colors.dart';
+import 'package:patirchi/core/network/device_registration_service.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/telegram_login_button.dart';
 import '../widgets/tg_login_waiting_card.dart';
@@ -15,9 +16,10 @@ import '../widgets/tg_login_waiting_card.dart';
 /// "Qayta yuborish" va avtomatik submit.
 /// Telegram bot orqali alternativ kirish imkoniyati.
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({super.key, required this.phoneNumber});
+  const OtpScreen({super.key, required this.phoneNumber, this.returnRoute});
 
   final String phoneNumber;
+  final String? returnRoute;
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -27,10 +29,9 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
   static const int _otpLength = 4;
   static const int _timerSeconds = 60;
 
-  // Vaqtinchalik default '0000' bilan to'ldirilgan
   final List<TextEditingController> _controllers = List.generate(
     _otpLength,
-    (_) => TextEditingController(text: '0'),
+    (_) => TextEditingController(),
   );
   final List<FocusNode> _focusNodes = List.generate(
     _otpLength,
@@ -104,12 +105,22 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
     if (!mounted) return;
 
     if (success) {
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+      await DeviceRegistrationService.register(force: true);
+      _navigateAfterLogin();
     } else {
       _showSnackBar(
         auth.errorMessage ?? 'Noto\'g\'ri kod. Qayta urinib ko\'ring.',
       );
       _clearOtp();
+    }
+  }
+
+  void _navigateAfterLogin() {
+    final route = widget.returnRoute;
+    if (route != null && route.isNotEmpty) {
+      Navigator.pushNamedAndRemoveUntil(context, route, (_) => false);
+    } else {
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
     }
   }
 
@@ -228,7 +239,8 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
     auth.startTgPolling(
       onConfirmed: (user) {
         if (!mounted) return;
-        Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+        unawaited(DeviceRegistrationService.register(force: true));
+        _navigateAfterLogin();
       },
       onFailed: (reason) {
         if (!mounted) return;
@@ -248,10 +260,8 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
     await auth.checkTgStatusOnce(
       onConfirmed: (user) {
         if (!mounted) return;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (_) => false,
-        );
+        unawaited(DeviceRegistrationService.register(force: true));
+        _navigateAfterLogin();
       },
       onFailed: (reason) {
         if (!mounted) return;
@@ -336,7 +346,7 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
         ),
         const SizedBox(height: 8),
         Text(
-          'Kod $_formattedPhone ga yuborildi (vaqtincha kod: 0000)',
+          'Kod $_formattedPhone raqamiga yuborildi.',
           style: const TextStyle(
             fontSize: 14,
             color: AppColors.textSecondary,

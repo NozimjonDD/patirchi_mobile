@@ -1,54 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:patirchi/core/constants/enums.dart';
+import 'package:patirchi/core/error/result.dart';
 import 'package:patirchi/features/buyer/address/data/models/address_model.dart';
+import 'package:patirchi/features/buyer/cart/data/repositories/cart_repository.dart';
 import 'package:patirchi/features/buyer/cart/presentation/providers/cart_provider.dart';
 import 'package:patirchi/features/buyer/orders/data/models/order_model.dart';
-import 'package:patirchi/core/constants/enums.dart';
 
-enum PaymentMethod {
-  cash,
-  payme,
-  click,
-  uzum;
+enum PaymentMethod { cash, payme, click, uzum }
 
-  String get label {
-    switch (this) {
-      case PaymentMethod.cash:
-        return 'Naqd pul';
-      case PaymentMethod.payme:
-        return 'Payme';
-      case PaymentMethod.click:
-        return 'Click';
-      case PaymentMethod.uzum:
-        return 'Uzum Bank';
-    }
-  }
-
-  String get iconAsset {
-    switch (this) {
-      case PaymentMethod.cash:
-        return 'cash';
-      case PaymentMethod.payme:
-        return 'payme';
-      case PaymentMethod.click:
-        return 'click';
-      case PaymentMethod.uzum:
-        return 'uzum';
-    }
-  }
+extension PaymentMethodLabel on PaymentMethod {
+  String get label => switch (this) {
+        PaymentMethod.cash => 'Naqd pul',
+        PaymentMethod.payme => 'Payme',
+        PaymentMethod.click => 'Click',
+        PaymentMethod.uzum => 'Uzum Bank',
+      };
 }
 
 class CheckoutProvider extends ChangeNotifier {
+  CheckoutProvider({CartRepository? repository})
+      : _repository = repository ?? CartRepository();
+
+  final CartRepository _repository;
   PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
   AddressModel? _selectedAddress;
   bool _isProcessing = false;
   String? _placedOrderNumber;
+  String? _error;
 
   PaymentMethod get selectedPaymentMethod => _selectedPaymentMethod;
   AddressModel? get selectedAddress => _selectedAddress;
   bool get isProcessing => _isProcessing;
   String? get placedOrderNumber => _placedOrderNumber;
+  String? get error => _error;
 
   void setPaymentMethod(PaymentMethod method) {
+    if (method != PaymentMethod.cash) return;
     _selectedPaymentMethod = method;
     notifyListeners();
   }
@@ -58,47 +45,44 @@ class CheckoutProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<OrderModel?> placeOrder(CartProvider cart) async {
+  Future<List<OrderModel>?> placeOrder(CartProvider cart) async {
+    if (_selectedPaymentMethod != PaymentMethod.cash) {
+      _error = 'Bu to\'lov usuli hozircha ishlamaydi.';
+      notifyListeners();
+      return null;
+    }
+    if (cart.deliveryMethod == DeliveryMethod.courier &&
+        _selectedAddress == null) {
+      _error = 'Yetkazib berish uchun manzil tanlang.';
+      notifyListeners();
+      return null;
+    }
+
     _isProcessing = true;
+    _error = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 1200));
-
-    final orderNumber =
-        '1${DateTime.now().millisecondsSinceEpoch.toString().substring(9)}';
-    _placedOrderNumber = orderNumber;
-
-    final order = OrderModel(
-      id: 'order_${DateTime.now().millisecondsSinceEpoch}',
-      orderNumber: orderNumber,
-      items: cart.items
-          .where((item) => item.product != null)
-          .map((item) => OrderItemModel(
-                productName: item.product!.name,
-                quantity: item.quantity,
-                unitPrice: item.product!.price,
-              ))
-          .toList(),
-      status: OrderStatus.pending,
-      totalPrice: cart.total,
-      deliveryFee: cart.deliveryFee,
-      discount: cart.discount,
-      createdAt: DateTime.now(),
-      shopName: 'Toshkent Non',
-      deliveryAddress: _selectedAddress?.fullAddress,
-      paymentMethod: _selectedPaymentMethod.label,
-      estimatedDelivery:
-          cart.deliveryMethod == DeliveryMethod.courier
-              ? DateTime.now().add(const Duration(minutes: 45))
-              : null,
+    final result = await _repository.createOrders(
+      fulfillmentType: cart.deliveryMethod == DeliveryMethod.pickup
+          ? 'pickup'
+          : 'delivery',
+      deliveryAddress: cart.deliveryMethod == DeliveryMethod.courier
+          ? _selectedAddress!.fullAddress
+          : null,
     );
+    final orders = result.dataOrNull;
+    if (orders == null || orders.isEmpty) {
+      _error = result.failureOrNull?.message ?? 'Buyurtma yaratilmadi.';
+      _isProcessing = false;
+      notifyListeners();
+      return null;
+    }
 
+    _placedOrderNumber = orders.first.orderNumber;
     cart.clear();
-
     _isProcessing = false;
     notifyListeners();
-
-    return order;
+    return orders;
   }
 
   void reset() {
@@ -106,6 +90,7 @@ class CheckoutProvider extends ChangeNotifier {
     _selectedAddress = null;
     _isProcessing = false;
     _placedOrderNumber = null;
+    _error = null;
     notifyListeners();
   }
 }

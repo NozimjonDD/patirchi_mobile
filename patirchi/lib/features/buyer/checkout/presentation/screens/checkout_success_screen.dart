@@ -6,11 +6,13 @@ import 'package:patirchi/features/buyer/orders/presentation/screens/order_detail
 class CheckoutSuccessScreen extends StatefulWidget {
   final String orderNumber;
   final String orderId;
+  final int additionalOrders;
 
   const CheckoutSuccessScreen({
     super.key,
     required this.orderNumber,
     required this.orderId,
+    this.additionalOrders = 0,
   });
 
   @override
@@ -134,7 +136,9 @@ class _CheckoutSuccessScreenState extends State<CheckoutSuccessScreen>
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Buyurtma #${widget.orderNumber}',
+                            widget.additionalOrders == 0
+                                ? 'Buyurtma #${widget.orderNumber}'
+                                : '#${widget.orderNumber} va yana ${widget.additionalOrders} ta buyurtma',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
@@ -205,8 +209,10 @@ class _CheckoutSuccessScreenState extends State<CheckoutSuccessScreen>
                       height: 54,
                       child: OutlinedButton(
                         onPressed: () {
-                          Navigator.of(context)
-                              .popUntil((route) => route.isFirst);
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            '/home',
+                            (_) => false,
+                          );
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.textPrimary,

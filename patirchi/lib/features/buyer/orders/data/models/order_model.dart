@@ -123,7 +123,9 @@ class OrderModel {
       final store = product?['store'] as Map<String, dynamic>?;
       if (store?['name'] is String) return store!['name'] as String;
     }
-    return json['shop_name'] as String? ?? '';
+    return json['store_name'] as String? ??
+        json['shop_name'] as String? ??
+        '';
   }
 
   static OrderStatus _parseStatus(String? value) {

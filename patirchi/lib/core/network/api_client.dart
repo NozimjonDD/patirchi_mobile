@@ -358,7 +358,6 @@ class ApiClient {
   /// Access tokenni storage dan oladi.
   Future<String?> _getToken() async {
     final token = await SecureStorageService.instance.getToken();
-    if (token == 'bypass_token_0000') return null;
     return token;
   }
 

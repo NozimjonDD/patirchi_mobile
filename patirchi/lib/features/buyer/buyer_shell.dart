@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:patirchi/core/network/device_registration_service.dart';
 import 'package:patirchi/core/theme/app_colors.dart';
+import 'package:patirchi/features/auth/presentation/providers/auth_provider.dart';
 import 'package:patirchi/features/buyer/cart/presentation/providers/cart_provider.dart';
 import 'home/presentation/screens/buyer_home_screen.dart';
 import 'catalog/presentation/screens/catalog_screen.dart';
@@ -17,6 +21,17 @@ class BuyerShell extends StatefulWidget {
 
 class _BuyerShellState extends State<BuyerShell> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(DeviceRegistrationService.register());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(context.read<AuthProvider>().syncGuestBuyerDataIfNeeded());
+      }
+    });
+  }
 
   final _screens = const [
     BuyerHomeScreen(),

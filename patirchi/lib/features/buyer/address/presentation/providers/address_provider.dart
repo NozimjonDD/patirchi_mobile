@@ -2,32 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:patirchi/features/buyer/address/data/models/address_model.dart';
 
 class AddressProvider extends ChangeNotifier {
-  final List<AddressModel> _addresses = [
-    const AddressModel(
-      id: 'addr_1',
-      label: 'Uy',
-      street: 'Chilonzor ko\'chasi',
-      building: '12',
-      apartment: '45',
-      floor: '4',
-      entrance: '2',
-      isDefault: true,
-      latitude: 41.2995,
-      longitude: 69.2401,
-    ),
-    const AddressModel(
-      id: 'addr_2',
-      label: 'Ish',
-      street: 'Yunusobod ko\'chasi',
-      building: '7',
-      apartment: '301',
-      floor: '3',
-      entrance: '1',
-      isDefault: false,
-      latitude: 41.3600,
-      longitude: 69.3200,
-    ),
-  ];
+  final List<AddressModel> _addresses = [];
 
   AddressModel? _selectedAddress;
 

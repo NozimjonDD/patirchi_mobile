@@ -15,7 +15,6 @@ import 'package:patirchi/features/auth/presentation/providers/auth_provider.dart
 import 'package:patirchi/features/auth/presentation/screens/splash_screen.dart';
 import 'package:patirchi/features/auth/presentation/screens/role_selection_screen.dart';
 import 'package:patirchi/features/auth/presentation/screens/login_screen.dart';
-import 'package:patirchi/features/auth/presentation/screens/register_screen.dart';
 import 'package:patirchi/features/auth/presentation/screens/otp_screen.dart';
 import 'package:patirchi/features/buyer/buyer_shell.dart';
 import 'package:patirchi/features/buyer/home/presentation/providers/buyer_home_provider.dart';
@@ -82,8 +81,16 @@ class PatirchiApp extends StatelessWidget {
           value: DevModeService.instance,
         ),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => BuyerHomeProvider()),
-        ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(
+          create: (context) => BuyerHomeProvider(
+            authProvider: context.read<AuthProvider>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => CartProvider(
+            authProvider: context.read<AuthProvider>(),
+          ),
+        ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
         ChangeNotifierProvider(create: (_) => OrdersProvider()),
@@ -169,23 +176,23 @@ class PatirchiApp extends StatelessWidget {
         return MaterialPageRoute(builder: (_) => const RoleSelectionScreen());
       case '/login':
         return MaterialPageRoute(builder: (_) => const LoginScreen());
-      case '/register':
-        return MaterialPageRoute(builder: (_) => const RegisterScreen());
       case '/otp':
-        final phone = settings.arguments as String? ?? '';
+        final args = settings.arguments;
+        final phone = args is Map ? args['phone'] as String? ?? '' : args as String? ?? '';
+        final returnRoute = args is Map ? args['returnRoute'] as String? : null;
         return MaterialPageRoute(
-          builder: (_) => OtpScreen(phoneNumber: phone),
+          builder: (_) => OtpScreen(phoneNumber: phone, returnRoute: returnRoute),
         );
       case '/home':
         return MaterialPageRoute(builder: (_) => const _HomeRouter());
       case '/checkout':
-        return MaterialPageRoute(builder: (_) => const CheckoutScreen());
+        return _protectedRoute(settings, (_) => const CheckoutScreen());
       case '/orders':
-        return MaterialPageRoute(builder: (_) => const BuyerOrdersScreen());
+        return _protectedRoute(settings, (_) => const BuyerOrdersScreen());
       case '/addresses':
-        return MaterialPageRoute(builder: (_) => const AddressListScreen());
+        return _protectedRoute(settings, (_) => const AddressListScreen());
       case '/notifications':
-        return MaterialPageRoute(builder: (_) => const NotificationScreen());
+        return _protectedRoute(settings, (_) => const NotificationScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
@@ -194,6 +201,18 @@ class PatirchiApp extends StatelessWidget {
         );
     }
   }
+
+  Route<dynamic> _protectedRoute(
+    RouteSettings settings,
+    Widget Function(BuildContext context) builder,
+  ) {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (context) => context.read<AuthProvider>().isLoggedIn
+          ? builder(context)
+          : LoginScreen(returnRoute: settings.name),
+    );
+  }
 }
 
 class _HomeRouter extends StatelessWidget {
@@ -201,7 +220,9 @@ class _HomeRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final role = context.watch<AuthProvider>().currentUserRole;
+    final auth = context.watch<AuthProvider>();
+    if (auth.currentUser == null) return const BuyerShell();
+    final role = auth.currentUserRole;
     return switch (role) {
       UserRole.buyer => const BuyerShell(),
       UserRole.bakery => const BakeryShell(),

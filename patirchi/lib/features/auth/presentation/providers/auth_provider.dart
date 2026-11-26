@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:patirchi/core/constants/app_constants.dart';
 import 'package:patirchi/core/constants/enums.dart';
 import 'package:patirchi/core/error/result.dart';
+import 'package:patirchi/core/network/guest_buyer_sync_service.dart';
 import 'package:patirchi/features/auth/data/models/tg_login_models.dart';
 import 'package:patirchi/features/auth/data/models/user_model.dart';
 import 'package:patirchi/features/auth/data/repositories/auth_repository.dart';
@@ -24,6 +25,7 @@ class AuthProvider extends ChangeNotifier {
 
   final AuthRepository _repository;
   final TgAuthRepository _tgRepository = TgAuthRepository();
+  final GuestBuyerSyncService _guestSync = GuestBuyerSyncService();
 
   // ---------------------------------------------------------------------------
   // Holat
@@ -39,6 +41,7 @@ class AuthProvider extends ChangeNotifier {
   String? _otpSecret;
 
   String? _errorMessage;
+  bool _guestSyncPending = false;
 
   // Telegram login holati
   TgLoginStartResponse? _tgSession;
@@ -56,6 +59,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   UserModel? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null && _repository.isLoggedIn;
+  bool get isUsingLocalBuyerData => _currentUser == null || _guestSyncPending;
   String get selectedRole => _selectedRole;
 
   /// OTP ekraniga o'tganda ishlatiladi.
@@ -117,8 +121,6 @@ class AuthProvider extends ChangeNotifier {
   /// Telefon raqamiga OTP yuboradi.
   ///
   /// Muvaffaqiyatli bo'lsa `true` qaytaradi va [otpSecret] saqlanadi.
-  /// Agar SMS xizmati xato bersa ham, vaqtinchalik `0000` kod bilan kirish
-  /// uchun `bypass_0000` secret bilan OTP ekraniga o'tkazadi.
   Future<bool> login(String phoneNumber) async {
     _setLoading(true);
     _clearError();
@@ -132,11 +134,11 @@ class AuthProvider extends ChangeNotifier {
         _setLoading(false);
         return true;
       },
-      onError: (_) {
-        // Vaqtincha 0000 bilan tasdiqlash ishlashi uchun fallback secret
-        _otpSecret = 'bypass_0000';
+      onError: (failure) {
+        _otpSecret = null;
+        _setError(failure.message);
         _setLoading(false);
-        return true;
+        return false;
       },
     );
   }
@@ -150,7 +152,7 @@ class AuthProvider extends ChangeNotifier {
   /// Muvaffaqiyatli bo'lsa `true` qaytaradi.
   /// Caller `/home` ga navigate qilishi kerak.
   Future<bool> confirmOtp(String otp) async {
-    if (_otpSecret == null && otp != AuthRepository.defaultBypassOtp) {
+    if (_otpSecret == null) {
       _setError('OTP secret topilmadi. Iltimos, qaytadan urinib ko\'ring.');
       return false;
     }
@@ -159,25 +161,21 @@ class AuthProvider extends ChangeNotifier {
     _clearError();
 
     final result = await _repository.confirmOtp(
-      _otpSecret ?? 'bypass_0000',
+      _otpSecret!,
       otp,
-      phoneNumber: _lastPhoneNumber ?? '',
-      role: _selectedRole,
     );
 
-    return result.fold(
-      onSuccess: (user) {
-        _currentUser = user;
-        _otpSecret = null;
-        _setLoading(false);
-        return true;
-      },
-      onError: (failure) {
-        _setError(failure.message);
-        _setLoading(false);
-        return false;
-      },
-    );
+    final user = result.dataOrNull;
+    if (user == null) {
+      _setError(result.failureOrNull?.message ?? 'Kodni tasdiqlab bo\'lmadi.');
+      _setLoading(false);
+      return false;
+    }
+    _currentUser = user;
+    _otpSecret = null;
+    await _syncGuestBuyerData();
+    _setLoading(false);
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -198,10 +196,11 @@ class AuthProvider extends ChangeNotifier {
         _setLoading(false);
         return true;
       },
-      onError: (_) {
-        _otpSecret = 'bypass_0000';
+      onError: (failure) {
+        _otpSecret = null;
+        _setError(failure.message);
         _setLoading(false);
-        return true;
+        return false;
       },
     );
   }
@@ -245,7 +244,7 @@ class AuthProvider extends ChangeNotifier {
   /// Token bormi tekshiradi, agar bor bo'lsa profil oladi.
   ///
   /// `/splash` ekranda chaqiriladi.
-  /// `true` — /home ga o'tish, `false` — /role-selection ga o'tish.
+  /// `true` — saqlangan hisobni ochish, `false` — mehmon bosh sahifasini ochish.
   Future<bool> tryAutoLogin() async {
     if (!_repository.isLoggedIn) {
       // Avval cache'dan tekshir
@@ -257,17 +256,15 @@ class AuthProvider extends ChangeNotifier {
 
     final result = await _repository.getMe();
 
-    return result.fold(
-      onSuccess: (user) {
-        _currentUser = user;
-        _setLoading(false);
-        return true;
-      },
-      onError: (_) {
-        _setLoading(false);
-        return false;
-      },
-    );
+    final user = result.dataOrNull;
+    if (user == null) {
+      _setLoading(false);
+      return false;
+    }
+    _currentUser = user;
+    await _syncGuestBuyerData();
+    _setLoading(false);
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -280,8 +277,23 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = null;
     _activeUiRole = null;
     _otpSecret = null;
+    _guestSyncPending = false;
     _clearError();
     notifyListeners();
+  }
+
+  Future<void> syncGuestBuyerDataIfNeeded() async {
+    if (_currentUser == null || !_guestSyncPending) return;
+    await _syncGuestBuyerData();
+    notifyListeners();
+  }
+
+  Future<void> _syncGuestBuyerData() async {
+    try {
+      _guestSyncPending = !await _guestSync.sync();
+    } on Object {
+      _guestSyncPending = true;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -385,6 +397,7 @@ class AuthProvider extends ChangeNotifier {
               );
               if (user != null) {
                 _currentUser = user;
+                await _syncGuestBuyerData();
                 _tgSession = null;
                 notifyListeners();
                 onConfirmed(user);
@@ -412,7 +425,7 @@ class AuthProvider extends ChangeNotifier {
               notifyListeners();
               onFailed(
                 'Telegram xizmatida vaqtinchalik xatolik (${failure.message}). '
-                'SMS kod sifatida 0000 kiritib kirishingiz mumkin.',
+                'SMS orqali kirib ko\'ring yoki keyinroq qayta urinib ko\'ring.',
               );
             }
             return null;
@@ -462,6 +475,7 @@ class AuthProvider extends ChangeNotifier {
           );
           if (user != null) {
             _currentUser = user;
+            await _syncGuestBuyerData();
             _tgSession = null;
             notifyListeners();
             onConfirmed(user);
@@ -476,7 +490,7 @@ class AuthProvider extends ChangeNotifier {
           onFailed(status.message ?? 'Tasdiqlash amalga oshmadi.');
         } else {
           notifyListeners();
-          onFailed('Hali tasdiqlanmadi. Botda kontaktni ulashing yoki 0000 kod bilan kiring.');
+          onFailed('Hali tasdiqlanmadi. Botda kontaktni ulashing va qayta tekshiring.');
         }
         return null;
       },
@@ -486,7 +500,7 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         onFailed(
           'Telegram server xatosi: ${failure.message}. '
-          'Vaqtincha 0000 kod orqali kirishingiz mumkin.',
+          'Keyinroq qayta urinib ko\'ring.',
         );
         return null;
       },
